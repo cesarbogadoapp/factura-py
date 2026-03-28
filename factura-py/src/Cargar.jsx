@@ -164,13 +164,6 @@ function CargaAI({ userId, onSuccess, onBack }) {
     if (!file) return
     setEstado('procesando')
 
-    const apiKey = import.meta.env.VITE_ANTHROPIC_API_KEY
-    if (!apiKey || apiKey === 'PONER_TU_API_KEY_AQUI') {
-      setEstado('error')
-      setError('Necesitás configurar tu API key de Anthropic en las variables de entorno (VITE_ANTHROPIC_API_KEY).')
-      return
-    }
-
     try {
       const toBase64 = (f) => new Promise((res, rej) => {
         const r = new FileReader()
@@ -187,9 +180,9 @@ function CargaAI({ userId, onSuccess, onBack }) {
         ? [{ type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: base64 } }, { type: 'text', text: PROMPT_EXTRACCION }]
         : [{ type: 'image', source: { type: 'base64', media_type: mediaType, data: base64 } }, { type: 'text', text: PROMPT_EXTRACCION }]
 
-      const response = await fetch('https://api.anthropic.com/v1/messages', {
+      const response = await fetch('/api/claude', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ model: 'claude-sonnet-4-20250514', max_tokens: 1000, messages: [{ role: 'user', content }] })
       })
 
