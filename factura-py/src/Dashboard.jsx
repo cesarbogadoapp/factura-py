@@ -1,9 +1,19 @@
 import { useState, useEffect } from 'react'
-import { collection, query, where, onSnapshot, orderBy, limit } from 'firebase/firestore'
+import { collection, query, where, onSnapshot, orderBy } from 'firebase/firestore'
 import { db } from './firebase'
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts'
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts'
 
 const fmt = (n) => Math.round(n || 0).toLocaleString('es-PY')
+
+const CustomTooltip = ({ active, payload, label }) => {
+  if (!active || !payload?.length) return null
+  return (
+    <div style={{ background: '#1f1f28', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, padding: '8px 12px', fontSize: 12 }}>
+      <div style={{ color: '#8888a0', marginBottom: 2 }}>{label}</div>
+      <div style={{ color: '#f0f0f5', fontWeight: 600 }}>Gs. {fmt(payload[0].value)}</div>
+    </div>
+  )
+}
 
 export default function Dashboard({ userId, onNavigate }) {
   const [facturas, setFacturas] = useState([])
@@ -11,10 +21,7 @@ export default function Dashboard({ userId, onNavigate }) {
 
   useEffect(() => {
     const q = query(collection(db, 'facturas'), where('userId', '==', userId), orderBy('fecha', 'desc'))
-    return onSnapshot(q, (snap) => {
-      setFacturas(snap.docs.map(d => ({ id: d.id, ...d.data() })))
-      setLoading(false)
-    })
+    return onSnapshot(q, (snap) => { setFacturas(snap.docs.map(d => ({ id: d.id, ...d.data() }))); setLoading(false) })
   }, [userId])
 
   const compras = facturas.filter(f => f.tipo === 'Compra')
@@ -23,136 +30,125 @@ export default function Dashboard({ userId, onNavigate }) {
   const totalVentas = ventas.reduce((s, f) => s + (f.total || 0), 0)
   const totalIva = facturas.reduce((s, f) => s + (f.ivaTotal || 0), 0)
   const balance = totalVentas - totalCompras
-
-  const barData = [
-    { name: 'Compras', valor: totalCompras },
-    { name: 'Ventas', valor: totalVentas },
-  ]
-
   const iva5 = facturas.reduce((s, f) => s + Math.round((f.base5 || 0) * 0.05), 0)
   const iva10 = facturas.reduce((s, f) => s + Math.round((f.base10 || 0) * 0.10), 0)
-  const pieData = [
-    { name: 'IVA 5%', value: iva5 },
-    { name: 'IVA 10%', value: iva10 },
-  ].filter(d => d.value > 0)
+  const barData = [{ name: 'Compras', valor: totalCompras }, { name: 'Ventas', valor: totalVentas }]
+  const pieData = [{ name: 'IVA 5%', value: iva5 }, { name: 'IVA 10%', value: iva10 }].filter(d => d.value > 0)
 
-  const recientes = facturas.slice(0, 5)
-
-  if (loading) return <div style={s.loading}>Cargando...</div>
+  if (loading) return <Loader />
 
   return (
     <div>
-      <div style={s.metrics}>
-        <MetricCard label="Total ventas" value={`Gs. ${fmt(totalVentas)}`} sub={`${ventas.length} facturas`} color="#065f46" bg="#f0fdf8" />
-        <MetricCard label="Total compras" value={`Gs. ${fmt(totalCompras)}`} sub={`${compras.length} facturas`} color="#92400e" bg="#fffbeb" />
-        <MetricCard label="Balance" value={`Gs. ${fmt(balance)}`} sub={balance >= 0 ? 'Positivo' : 'Negativo'} color={balance >= 0 ? '#065f46' : '#991b1b'} bg={balance >= 0 ? '#f0fdf8' : '#fef2f2'} />
-        <MetricCard label="Total IVA" value={`Gs. ${fmt(totalIva)}`} sub={`${facturas.length} facturas`} color="#1e40af" bg="#eff6ff" />
+      <div style={{ marginBottom: 20 }}>
+        <h1 style={{ fontSize: 20, fontWeight: 600, color: 'var(--text)', marginBottom: 2 }}>Dashboard</h1>
+        <p style={{ color: 'var(--text2)', fontSize: 13 }}>{facturas.length} movimientos registrados</p>
       </div>
 
-      <div style={s.chartRow}>
-        <div style={s.chartCard}>
-          <div style={s.chartTitle}>Compras vs Ventas</div>
-          <ResponsiveContainer width="100%" height={180}>
-            <BarChart data={barData} barSize={48}>
-              <XAxis dataKey="name" tick={{ fontSize: 12 }} axisLine={false} tickLine={false} />
-              <YAxis tick={{ fontSize: 11 }} tickFormatter={v => `${(v/1000000).toFixed(1)}M`} axisLine={false} tickLine={false} />
-              <Tooltip formatter={v => `Gs. ${fmt(v)}`} />
-              <Bar dataKey="valor" fill="#1D9E75" radius={[6,6,0,0]} />
+      <div className="metrics-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 16 }}>
+        <MetricCard icon="↑" label="Ventas" value={`Gs. ${fmt(totalVentas)}`} sub={`${ventas.length} facturas`} color="var(--green)" bg="var(--green-bg)" />
+        <MetricCard icon="↓" label="Compras" value={`Gs. ${fmt(totalCompras)}`} sub={`${compras.length} facturas`} color="var(--red)" bg="var(--red-bg)" />
+        <MetricCard icon="=" label="Balance" value={`Gs. ${fmt(balance)}`} sub={balance >= 0 ? 'Positivo' : 'Negativo'} color={balance >= 0 ? 'var(--green)' : 'var(--red)'} bg={balance >= 0 ? 'var(--green-bg)' : 'var(--red-bg)'} />
+        <MetricCard icon="%" label="IVA total" value={`Gs. ${fmt(totalIva)}`} sub="acumulado" color="var(--accent)" bg="var(--accent-glow)" />
+      </div>
+
+      <div className="chart-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 16 }}>
+        <div style={card}>
+          <div style={cardTitle}>Compras vs Ventas</div>
+          <ResponsiveContainer width="100%" height={160}>
+            <BarChart data={barData} barSize={36}>
+              <XAxis dataKey="name" tick={{ fontSize: 12, fill: '#8888a0' }} axisLine={false} tickLine={false} />
+              <YAxis tick={{ fontSize: 10, fill: '#8888a0' }} tickFormatter={v => `${(v/1000000).toFixed(1)}M`} axisLine={false} tickLine={false} />
+              <Tooltip content={<CustomTooltip />} />
+              <Bar dataKey="valor" radius={[5,5,0,0]}><Cell fill="#3ecf8e" /><Cell fill="#f87171" /></Bar>
             </BarChart>
           </ResponsiveContainer>
         </div>
-
-        {pieData.length > 0 && (
-          <div style={s.chartCard}>
-            <div style={s.chartTitle}>Distribución IVA</div>
-            <ResponsiveContainer width="100%" height={180}>
-              <PieChart>
-                <Pie data={pieData} cx="50%" cy="50%" innerRadius={45} outerRadius={70} dataKey="value" paddingAngle={3}>
-                  <Cell fill="#7F77DD" />
-                  <Cell fill="#1D9E75" />
-                </Pie>
-                <Legend iconType="square" iconSize={10} formatter={(v, e) => `${v}: Gs. ${fmt(e.payload.value)}`} />
-                <Tooltip formatter={v => `Gs. ${fmt(v)}`} />
-              </PieChart>
-            </ResponsiveContainer>
-          </div>
-        )}
+        <div style={card}>
+          <div style={cardTitle}>Distribución IVA</div>
+          {pieData.length === 0
+            ? <div style={{ color: 'var(--text3)', fontSize: 13, padding: '32px 0', textAlign: 'center' }}>Sin datos aún</div>
+            : <>
+                <ResponsiveContainer width="100%" height={130}>
+                  <PieChart><Pie data={pieData} cx="50%" cy="50%" innerRadius={38} outerRadius={58} dataKey="value" paddingAngle={3}><Cell fill="#7c6af7" /><Cell fill="#3ecf8e" /></Pie><Tooltip content={<CustomTooltip />} /></PieChart>
+                </ResponsiveContainer>
+                <div style={{ display: 'flex', justifyContent: 'center', gap: 16, marginTop: 4 }}>
+                  {pieData.map((d, i) => (
+                    <div key={d.name} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: 'var(--text2)' }}>
+                      <div style={{ width: 7, height: 7, borderRadius: 2, background: i === 0 ? '#7c6af7' : '#3ecf8e' }} />
+                      {d.name}
+                    </div>
+                  ))}
+                </div>
+              </>
+          }
+        </div>
       </div>
 
-      <div style={s.card}>
-        <div style={s.cardHeader}>
-          <span style={s.chartTitle}>Últimas facturas</span>
-          <button style={s.linkBtn} onClick={() => onNavigate('facturas')}>Ver todas →</button>
+      <div style={card}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+          <div style={cardTitle}>Últimos movimientos</div>
+          <button onClick={() => onNavigate('facturas')} style={{ fontSize: 12, color: 'var(--accent)', background: 'none', border: 'none', fontWeight: 500 }}>Ver todos →</button>
         </div>
-        {recientes.length === 0
-          ? <div style={s.empty}>Todavía no cargaste facturas. <button style={s.linkBtn} onClick={() => onNavigate('cargar')}>Cargar ahora →</button></div>
-          : <MiniTable facturas={recientes} />
-        }
+        {facturas.length === 0 ? <EmptyState onNavigate={onNavigate} /> : <MiniTable facturas={facturas.slice(0, 5)} />}
       </div>
     </div>
   )
 }
 
-function MetricCard({ label, value, sub, color, bg }) {
+function MetricCard({ icon, label, value, sub, color, bg }) {
   return (
-    <div style={{ ...s.metric, background: bg }}>
-      <div style={s.metricLabel}>{label}</div>
-      <div style={{ ...s.metricValue, color }}>{value}</div>
-      <div style={s.metricSub}>{sub}</div>
+    <div className="card-hover" style={{ background: bg, border: `1px solid ${color}22`, borderRadius: 'var(--radius-lg)', padding: '14px 16px', cursor: 'default' }}>
+      <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--text2)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 10 }}>{label}</div>
+      <div style={{ fontSize: 16, fontWeight: 700, color, marginBottom: 3, wordBreak: 'break-word' }}>{value}</div>
+      <div style={{ fontSize: 11, color: 'var(--text3)' }}>{sub}</div>
     </div>
   )
 }
 
 function MiniTable({ facturas }) {
   return (
-    <table style={s.table}>
-      <thead>
-        <tr>{['N° Factura','Proveedor/Cliente','Fecha','Tipo','Total Gs.'].map(h => (
-          <th key={h} style={s.th}>{h}</th>
-        ))}</tr>
-      </thead>
-      <tbody>
-        {facturas.map(f => (
-          <tr key={f.id} style={s.tr}>
-            <td style={s.td}><span style={s.mono}>{f.numero}</span></td>
-            <td style={{ ...s.td, fontWeight: 500 }}>{f.nombre}</td>
-            <td style={s.td}>{f.fecha}</td>
-            <td style={s.td}><Badge tipo={f.tipo} /></td>
-            <td style={{ ...s.td, fontWeight: 500 }}>Gs. {fmt(f.total)}</td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
+    <div style={{ overflowX: 'auto' }}>
+      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 400 }}>
+        <thead>
+          <tr>{['N° Factura','Proveedor','Fecha','Tipo','Total'].map(h => (
+            <th key={h} style={{ padding: '6px 10px', textAlign: 'left', fontSize: 10, color: 'var(--text3)', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.05em', borderBottom: '1px solid var(--border)', whiteSpace: 'nowrap' }}>{h}</th>
+          ))}</tr>
+        </thead>
+        <tbody>
+          {facturas.map(f => (
+            <tr key={f.id} className="row-hover">
+              <td style={td}><span style={{ fontFamily: 'DM Mono', fontSize: 11, color: 'var(--text3)' }}>{f.numero}</span></td>
+              <td style={{ ...td, fontWeight: 500, maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.nombre}</td>
+              <td style={{ ...td, color: 'var(--text2)', whiteSpace: 'nowrap' }}>{f.fecha}</td>
+              <td style={td}><Badge tipo={f.tipo} /></td>
+              <td style={{ ...td, fontWeight: 600, fontFamily: 'DM Mono', fontSize: 12, whiteSpace: 'nowrap' }}>Gs. {fmt(f.total)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+function EmptyState({ onNavigate }) {
+  return (
+    <div style={{ textAlign: 'center', padding: '32px 20px' }}>
+      <div style={{ fontSize: 28, marginBottom: 10, opacity: 0.3 }}>📄</div>
+      <div style={{ color: 'var(--text2)', fontSize: 13, marginBottom: 14 }}>Todavía no cargaste facturas</div>
+      <button onClick={() => onNavigate('cargar')} style={{ fontSize: 13, color: 'var(--accent)', background: 'var(--accent-glow)', border: '1px solid rgba(124,106,247,0.3)', borderRadius: 8, padding: '8px 16px', fontWeight: 500 }}>Cargar primera factura →</button>
+    </div>
   )
 }
 
 function Badge({ tipo }) {
-  const colors = {
-    Compra: { bg: '#eff6ff', color: '#1d4ed8' },
-    Venta: { bg: '#f0fdf4', color: '#15803d' },
-  }
-  const c = colors[tipo] || { bg: '#f5f5f5', color: '#555' }
-  return <span style={{ ...s.badge, background: c.bg, color: c.color }}>{tipo}</span>
+  const c = tipo === 'Compra' ? { bg: 'var(--blue-bg)', color: 'var(--blue)' } : { bg: 'var(--green-bg)', color: 'var(--green)' }
+  return <span style={{ fontSize: 11, padding: '3px 8px', borderRadius: 99, fontWeight: 500, background: c.bg, color: c.color, whiteSpace: 'nowrap' }}>{tipo}</span>
 }
 
-const s = {
-  loading: { padding: 40, textAlign: 'center', color: '#888' },
-  metrics: { display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 20 },
-  metric: { borderRadius: 12, padding: '14px 16px', border: '1px solid rgba(0,0,0,0.05)' },
-  metricLabel: { fontSize: 11, color: '#888', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 },
-  metricValue: { fontSize: 18, fontWeight: 600, marginBottom: 2 },
-  metricSub: { fontSize: 11, color: '#999' },
-  chartRow: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 20 },
-  chartCard: { background: '#fff', borderRadius: 12, padding: 16, border: '1px solid #eee' },
-  chartTitle: { fontSize: 13, fontWeight: 600, marginBottom: 12, color: '#333' },
-  card: { background: '#fff', borderRadius: 12, padding: 16, border: '1px solid #eee' },
-  cardHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
-  linkBtn: { fontSize: 12, color: '#1D9E75', background: 'none', border: 'none', fontWeight: 500, padding: 0 },
-  empty: { color: '#888', fontSize: 13, padding: '20px 0', textAlign: 'center' },
-  table: { width: '100%', borderCollapse: 'collapse', fontSize: 13 },
-  th: { padding: '8px 10px', textAlign: 'left', fontSize: 11, color: '#888', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.04em', borderBottom: '1px solid #f0f0f0' },
-  tr: { borderBottom: '1px solid #f9f9f9' },
-  td: { padding: '10px 10px', color: '#333', fontSize: 13 },
-  mono: { fontFamily: 'monospace', fontSize: 12, color: '#666' },
-  badge: { fontSize: 11, padding: '2px 8px', borderRadius: 99, fontWeight: 500 },
+function Loader() {
+  return <div style={{ display: 'flex', justifyContent: 'center', padding: 80 }}><div style={{ width: 24, height: 24, border: '2px solid var(--bg4)', borderTop: '2px solid var(--accent)', borderRadius: '50%', animation: 'spin 0.7s linear infinite' }} /></div>
 }
+
+const card = { background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '16px 18px' }
+const cardTitle = { fontSize: 11, fontWeight: 600, color: 'var(--text2)', marginBottom: 12, textTransform: 'uppercase', letterSpacing: '0.06em' }
+const td = { padding: '10px 10px', color: 'var(--text)', borderBottom: '1px solid var(--border)' }
