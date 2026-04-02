@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { collection, addDoc } from 'firebase/firestore'
 import { db } from './firebase'
+import { obtenerPerfil } from './Perfil'
 
 export default function Cargar({ userId, onSuccess }) {
   const [modo, setModo] = useState(null)
@@ -48,48 +49,87 @@ function CargaXML({ userId, onSuccess, onBack }) {
   const [datos, setDatos] = useState(null)
   const [error, setError] = useState('')
 
-  const procesarXML = (e) => {
+  const procesarXML = async (e) => {
     const file = e.target.files[0]
     if (!file) return
     setEstado('procesando')
+    const perfil = await obtenerPerfil(userId)
+    const miRuc = perfil?.ruc?.replace(/[^0-9]/g, '') || ''
     const reader = new FileReader()
     reader.onload = (ev) => {
       try {
         const parser = new DOMParser()
         const xml = parser.parseFromString(ev.target.result, 'text/xml')
-        const get = (...tags) => { for (const tag of tags) { const v = xml.querySelector(tag)?.textContent?.trim(); if (v) return v; } return '' }
+        const getTag = (...tags) => { for (const t of tags) { const v = xml.querySelector(t)?.textContent?.trim(); if (v) return v; } return '' }
+        const getNum = (...tags) => parseFloat(getTag(...tags) || '0')
 
-        // Nombre: buscar en todos los tags posibles del estándar SET
-        const nombreEmi = get('xNomEmi','dNomEmi','xRazSocEmi','dRazSocEmi','xNomFant')
-        const nombreRec = get('xNomRec','dNomRec','xRazSocRec','dRazSocRec','xNombre')
-        const rucEmi = get('dRucEmi','dRUCEmi')
-        const rucRec = get('dRucRec','dRUCRec','dNumDocRec')
-        const est = get('dEst'); const pun = get('dPunExp','dPuntoExp'); const num = get('dNumDoc','dNroDoc')
-        const numeroCompleto = (est && pun && num) ? `${est}-${pun}-${num}` : get('id','dId')
+        // Datos del EMISOR (quien emite la factura)
+        const nombreEmisor  = getTag('dNomEmi','xNomEmi')
+        const rucEmisorBase = getTag('dRucEm','dRucEmi','xRucEmi')
+        const dvEmisor      = getTag('dDVEmi')
+        const rucEmisor     = rucEmisorBase && dvEmisor ? `${rucEmisorBase}-${dvEmisor}` : rucEmisorBase
+
+        // Datos del RECEPTOR (quien recibe la factura)
+        const nombreReceptor  = getTag('dNomRec','xNomRec')
+        const rucReceptorBase = getTag('dRucRec','xRucRec')
+        const dvReceptor      = getTag('dDVRec')
+        const rucReceptor     = rucReceptorBase && dvReceptor ? `${rucReceptorBase}-${dvReceptor}` : rucReceptorBase
+
+        // Detectar si vos sos el emisor o receptor comparando con tu RUC del perfil
+        const rucEmisorLimpio   = rucEmisorBase.replace(/[^0-9]/g, '')
+        const rucReceptorLimpio = rucReceptorBase.replace(/[^0-9]/g, '')
+        let tipoDetectado = 'Compra'
+        let nombreContraparte = nombreEmisor
+        let rucContraparte = rucEmisor
+        if (miRuc) {
+          if (rucEmisorLimpio === miRuc) {
+            // Vos emitiste → es una VENTA → contraparte es el receptor
+            tipoDetectado = 'Venta'
+            nombreContraparte = nombreReceptor || nombreEmisor
+            rucContraparte    = rucReceptor    || rucEmisor
+          } else if (rucReceptorLimpio === miRuc) {
+            // Te emitieron → es una COMPRA → contraparte es el emisor
+            tipoDetectado = 'Compra'
+            nombreContraparte = nombreEmisor || nombreReceptor
+            rucContraparte    = rucEmisor    || rucReceptor
+          }
+        } else {
+          // Sin perfil: mostrar receptor por defecto, usuario corrige
+          nombreContraparte = nombreReceptor || nombreEmisor
+          rucContraparte    = rucReceptor    || rucEmisor
+        }
+
+        const est = getTag('dEst')
+        const pun = getTag('dPunExp','dPuntoExp')
+        const num = getTag('dNumDoc','dNroDoc')
+        const numeroCompleto = est && pun && num ? `${est}-${pun}-${num}` : getTag('id','dId')
+
+        // Bases e IVA discriminado por tasa
+        const base5   = getNum('dSub5','dTotBas5')
+        const base10  = getNum('dSub10','dTotBas10')
+        const iva5m   = getNum('dIVA5','dTotIVA5')
+        const iva10m  = getNum('dIVA10','dTotIVA10')
+        const ivaTotal = (iva5m + iva10m) || getNum('dTotIVA','dIVA')
+
+        const fechaRaw = getTag('dFeEmiDE','dFeEmiDe','dFecFirma','dFecEmi')
 
         const factura = {
-          tipo: 'Compra',
+          tipo: tipoDetectado,
           numero: numeroCompleto,
-          nombre: nombreEmi || nombreRec || '',
-          ruc: rucEmi || rucRec || '',
-          email: get('dEmailRec','dEmail'),
-          telefono: get('dTelRec','dTel','dTelEmi'),
-          direccion: get('dDirRec','dDirEmi','dDir'),
-          fecha: get('dFeEmiDe','dFecFirma','dFecEmi').split('T')[0] || new Date().toISOString().split('T')[0],
-          condicion: get('iCondOpe') === '2' ? 'Crédito' : 'Contado',
-          timbrado: get('dNumTim','dTimbrado'),
-          total: parseFloat(get('dTotGralOpe','dTotImp','dTotalGral') || 0),
-          exentas: parseFloat(get('dTotExe','dTotExento') || 0),
-          base5: parseFloat(get('dTotBas5','dBasGravIva5') || 0),
-          base10: parseFloat(get('dTotBas10','dBasGravIva10') || 0),
-          ivaTotal: parseFloat(get('dTotIVA','dIVA','dTotalIva') || 0),
+          nombre: nombreContraparte.trim(),
+          ruc: rucContraparte,
+          email: getTag('dEmailRec','dEmailE','dEmail'),
+          telefono: getTag('dTelRec','dTelEmi','dTel'),
+          direccion: getTag('dDirRec','dDirEmi','dDir'),
+          fecha: fechaRaw.split('T')[0] || new Date().toISOString().split('T')[0],
+          condicion: getTag('iCondOpe') === '2' ? 'Crédito' : 'Contado',
+          timbrado: getTag('dNumTim','dTimbrado'),
+          total: getNum('dTotGralOpe','dTotImp','dTotOpe'),
+          exentas: getNum('dSubExe','dSubExo','dTotExe'),
+          base5,
+          base10,
+          ivaTotal,
           fuente: 'XML', userId, creadoEn: new Date().toISOString(),
-        }
-        if (!factura.ivaTotal) factura.ivaTotal = Math.round(factura.base5 * 0.05) + Math.round(factura.base10 * 0.10)
-        // Fallback: si nombre sigue vacío buscar cualquier nodo con "Nom" o "RazSoc"
-        if (!factura.nombre) {
-          const node = [...xml.querySelectorAll('*')].find(n => /nom|razsoc/i.test(n.tagName) && n.children.length === 0)
-          factura.nombre = node?.textContent?.trim() || ''
         }
         setDatos(factura)
         setEstado('preview')
