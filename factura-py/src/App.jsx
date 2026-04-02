@@ -4,6 +4,7 @@ import { auth, googleProvider } from './firebase'
 import Dashboard from './Dashboard'
 import Facturas from './Facturas'
 import Cargar from './Cargar'
+import Perfil from './Perfil'
 
 export default function App() {
   const [user, setUser] = useState(null)
@@ -79,7 +80,7 @@ export default function App() {
 
         {/* Desktop nav */}
         <nav className="desktop-nav" style={{ gap: 2 }}>
-          {[['dashboard','Dashboard'],['facturas','Facturas'],['cargar','Cargar']].map(([v, label]) => (
+          {[['dashboard','Dashboard'],['facturas','Facturas'],['cargar','Cargar'],['perfil','Perfil']].map(([v, label]) => (
             <button key={v} className="nav-item" onClick={() => navigate(v)} style={{ padding: '6px 14px', borderRadius: 8, border: 'none', fontSize: 13, fontWeight: 500, background: view === v ? 'rgba(124,106,247,0.15)' : 'transparent', color: view === v ? 'var(--accent)' : 'var(--text2)' }}>{label}</button>
           ))}
         </nav>
@@ -99,7 +100,7 @@ export default function App() {
       {/* Mobile dropdown menu */}
       {menuOpen && (
         <div className="mobile-menu" style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderTop: 'none', padding: '8px 12px 12px', position: 'sticky', top: 56, zIndex: 99 }}>
-          {[['dashboard','Dashboard'],['facturas','Facturas'],['cargar','Cargar']].map(([v, label]) => (
+          {[['dashboard','Dashboard'],['facturas','Facturas'],['cargar','Cargar'],['perfil','Perfil']].map(([v, label]) => (
             <button key={v} onClick={() => navigate(v)} style={{ display: 'block', width: '100%', textAlign: 'left', padding: '10px 12px', background: view === v ? 'rgba(124,106,247,0.1)' : 'transparent', border: 'none', borderRadius: 8, fontSize: 14, fontWeight: 500, color: view === v ? 'var(--accent)' : 'var(--text2)', marginBottom: 2 }}>{label}</button>
           ))}
           <div style={{ borderTop: '1px solid var(--border)', marginTop: 8, paddingTop: 8 }}>
@@ -112,13 +113,15 @@ export default function App() {
         {view === 'dashboard' && <Dashboard userId={user.uid} onNavigate={navigate} />}
         {view === 'facturas' && <Facturas userId={user.uid} />}
         {view === 'cargar' && <Cargar userId={user.uid} onSuccess={() => navigate('facturas')} />}
+        {view === 'perfil' && <Perfil userId={user.uid} onClose={() => navigate('dashboard')} />}
       </main>
 
       {/* Bottom nav mobile */}
       <nav className="bottom-nav" style={{ position: 'fixed', bottom: 0, left: 0, right: 0, background: 'rgba(17,17,21,0.95)', backdropFilter: 'blur(12px)', borderTop: '1px solid var(--border)', padding: '8px 0 max(8px, env(safe-area-inset-bottom))', zIndex: 100, justifyContent: 'space-around', display: 'none' }}>
         {[['dashboard', 'Dashboard', <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>],
           ['facturas', 'Facturas', <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>],
-          ['cargar', 'Cargar', <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>]
+          ['cargar', 'Cargar', <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>],
+          ['perfil', 'Perfil', <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>]
         ].map(([v, label, icon]) => (
           <button key={v} onClick={() => navigate(v)} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, background: 'none', border: 'none', color: view === v ? 'var(--accent)' : 'var(--text3)', fontSize: 10, fontWeight: 500, padding: '4px 20px', fontFamily: 'inherit' }}>
             {icon}
