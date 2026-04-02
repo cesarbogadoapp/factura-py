@@ -57,26 +57,40 @@ function CargaXML({ userId, onSuccess, onBack }) {
       try {
         const parser = new DOMParser()
         const xml = parser.parseFromString(ev.target.result, 'text/xml')
-        const get = (tag) => xml.querySelector(tag)?.textContent?.trim() || ''
+        const get = (...tags) => { for (const tag of tags) { const v = xml.querySelector(tag)?.textContent?.trim(); if (v) return v; } return '' }
+
+        // Nombre: buscar en todos los tags posibles del estándar SET
+        const nombreEmi = get('xNomEmi','dNomEmi','xRazSocEmi','dRazSocEmi','xNomFant')
+        const nombreRec = get('xNomRec','dNomRec','xRazSocRec','dRazSocRec','xNombre')
+        const rucEmi = get('dRucEmi','dRUCEmi')
+        const rucRec = get('dRucRec','dRUCRec','dNumDocRec')
+        const est = get('dEst'); const pun = get('dPunExp','dPuntoExp'); const num = get('dNumDoc','dNroDoc')
+        const numeroCompleto = (est && pun && num) ? `${est}-${pun}-${num}` : get('id','dId')
+
         const factura = {
           tipo: 'Compra',
-          numero: `${get('dEst')}-${get('dPunExp')}-${get('dNumDoc')}`.replace(/^-+|-+$/g, '') || '',
-          nombre: get('xNomRec') || get('xNomEmi') || '',
-          ruc: get('dRucRec') || get('dRucEmi') || '',
-          email: get('dEmailRec') || '',
-          telefono: get('dTelRec') || '',
-          direccion: get('dDirRec') || '',
-          fecha: (get('dFeEmiDe') || get('dFecFirma') || '').split('T')[0] || new Date().toISOString().split('T')[0],
+          numero: numeroCompleto,
+          nombre: nombreEmi || nombreRec || '',
+          ruc: rucEmi || rucRec || '',
+          email: get('dEmailRec','dEmail'),
+          telefono: get('dTelRec','dTel','dTelEmi'),
+          direccion: get('dDirRec','dDirEmi','dDir'),
+          fecha: get('dFeEmiDe','dFecFirma','dFecEmi').split('T')[0] || new Date().toISOString().split('T')[0],
           condicion: get('iCondOpe') === '2' ? 'Crédito' : 'Contado',
-          timbrado: get('dNumTim') || '',
-          total: parseFloat(get('dTotGralOpe') || get('dTotImp') || 0),
-          exentas: parseFloat(get('dTotExe') || 0),
-          base5: parseFloat(get('dTotBas5') || 0),
-          base10: parseFloat(get('dTotBas10') || 0),
-          ivaTotal: parseFloat(get('dTotIVA') || get('dIVA') || 0),
+          timbrado: get('dNumTim','dTimbrado'),
+          total: parseFloat(get('dTotGralOpe','dTotImp','dTotalGral') || 0),
+          exentas: parseFloat(get('dTotExe','dTotExento') || 0),
+          base5: parseFloat(get('dTotBas5','dBasGravIva5') || 0),
+          base10: parseFloat(get('dTotBas10','dBasGravIva10') || 0),
+          ivaTotal: parseFloat(get('dTotIVA','dIVA','dTotalIva') || 0),
           fuente: 'XML', userId, creadoEn: new Date().toISOString(),
         }
         if (!factura.ivaTotal) factura.ivaTotal = Math.round(factura.base5 * 0.05) + Math.round(factura.base10 * 0.10)
+        // Fallback: si nombre sigue vacío buscar cualquier nodo con "Nom" o "RazSoc"
+        if (!factura.nombre) {
+          const node = [...xml.querySelectorAll('*')].find(n => /nom|razsoc/i.test(n.tagName) && n.children.length === 0)
+          factura.nombre = node?.textContent?.trim() || ''
+        }
         setDatos(factura)
         setEstado('preview')
       } catch { setEstado('error'); setError('No se pudo leer el XML. Verificá que sea una factura electrónica válida.') }
